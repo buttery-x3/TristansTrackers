@@ -1,0 +1,16 @@
+﻿<Window x:Class="TristansTrackers.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:TristansTrackers"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+    <Grid>
+        <TextBlock HorizontalAlignment="Left" Margin="151,112,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="88"><Run Language="en-au" Text="Blah blah blah I say the words"/></TextBlock>
+        <Button Content="I poke a thing" HorizontalAlignment="Left" Margin="315,144,0,0" VerticalAlignment="Top"/>
+        <CheckBox Content="i check a box" HorizontalAlignment="Left" Margin="274,112,0,0" VerticalAlignment="Top"/>
+        <ComboBox HorizontalAlignment="Left" Margin="436,128,0,0" VerticalAlignment="Top" Width="120" SelectionChanged="ComboBox_SelectionChanged"/>
+
+    </Grid>
+</Window>
