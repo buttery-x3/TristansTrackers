@@ -6,7 +6,7 @@
     Width="100"
     Height="20"
     AllowsTransparency="True"
-    Background="#4C000000"
+    Background="#19FFFFFF"
     Loaded="MainWindow_Loaded"
     MouseDown="Window_MouseDown"
     MouseEnter="RootGrid_MouseEnter"
@@ -30,7 +30,7 @@
                 Width="0"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Stretch"
-                Fill="Black" />
+                Fill="#BF000000" />
 
             <Button
                 x:Name="LockButton"
