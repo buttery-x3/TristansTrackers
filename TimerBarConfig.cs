@@ -1,4 +1,6 @@
-﻿public class TimeBarConfig
+namespace TristansTrackers;
+
+internal sealed class TimeBarConfig
 {
     public double XPos { get; set; } = -1;
     public double YPos { get; set; } = -1;

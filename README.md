@@ -4,9 +4,9 @@ TristansTrackers is a minimal Windows WPF timer/progress HUD. It runs as a
 small, borderless, always-on-top bar that can be dragged around the desktop and
 locked in place.
 
-The current app window is titled `LifePanel` and is intentionally lightweight:
-it stays out of the taskbar and Alt+Tab list, animates a simple fill bar, and
-saves its last position between launches.
+The app is intentionally lightweight: it stays out of the taskbar and Alt+Tab
+list, animates a simple fill bar with a completion pulse, and saves its last
+position between launches.
 
 ## Requirements
 

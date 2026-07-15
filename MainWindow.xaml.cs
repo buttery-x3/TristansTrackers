@@ -1,145 +1,189 @@
-﻿using Newtonsoft.Json;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
 
 namespace TristansTrackers
 {
     /// <summary>
-    /// Native Win32 flags for forcing TopMost / ToolWindow behavior.
-    /// Makes the window behave more like a floating HUD widget instead of a normal app window.
+    /// Native Win32 interop used to keep the window out of Alt+Tab and at the
+    /// top of the desktop z-order without activating it.
     /// </summary>
     internal static class NativeMethods
     {
         public const int GWL_EXSTYLE = -20;
-        public const int WS_EX_TOOLWINDOW = 0x00000080;   // Hides from Alt+Tab
-        public const int WS_EX_TOPMOST = 0x00000008;      // Stay above normal windows
-        public const int WS_EX_NOACTIVATE = 0x08000000;   // Optional: don't steal focus
+        public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const uint SWP_NOSIZE = 0x0001;
+        public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_NOOWNERZORDER = 0x0200;
+        public static readonly IntPtr HWND_TOPMOST = new(-1);
 
         [DllImport("user32.dll")]
         public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
         [DllImport("user32.dll")]
         public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr hWndInsertAfter,
+            int x,
+            int y,
+            int cx,
+            int cy,
+            uint uFlags);
     }
 
     public partial class MainWindow : Window
     {
-        // ---- Smooth Progress Bar Timing State ----
+        private const double DurationSeconds = 1.0;
+        private static readonly string ConfigDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "TristansTrackers");
+        private static readonly string ConfigPath = Path.Combine(ConfigDirectory, "timebar_config.json");
+        private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-        private double _progress = 0.0;
-        private const double DurationSeconds = 1.0; // How long a full bar fill takes
-        private TimeSpan _lastFrameTime = TimeSpan.Zero;  // Used for deltaTime calculation
-
-        // ---- Locking / Dragging ----
-
-        private bool _isLocked = false;
+        private readonly DispatcherTimer _topmostTimer;
+        private TimeBarConfig _config = new();
+        private TimeSpan _lastFrameTime = TimeSpan.Zero;
+        private double _progress;
+        private bool _isLocked;
 
         public MainWindow()
         {
             InitializeComponent();
-            Loaded += MainWindow_Loaded;
+
+            _topmostTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(2)
+            };
+            _topmostTimer.Tick += (_, _) => EnsureTopmost();
         }
 
-        /// <summary>
-        /// Runs when the window finishes loading.
-        /// Sets native window flags and hooks up the render loop.
-        /// </summary>
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            // --- Apply special window flags (TopMost, ToolWindow, etc.) ---
             var hwnd = new WindowInteropHelper(this).Handle;
-
             int exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            exStyle |= NativeMethods.WS_EX_TOPMOST;
-            exStyle |= NativeMethods.WS_EX_TOOLWINDOW;
-            // exStyle |= NativeMethods.WS_EX_NOACTIVATE; // Enable if you want "click-through" behavior
-            NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+            NativeMethods.SetWindowLong(
+                hwnd,
+                NativeMethods.GWL_EXSTYLE,
+                exStyle | NativeMethods.WS_EX_TOOLWINDOW);
 
-            // --- Hook the composition render loop for buttery-smooth animation ---
             CompositionTarget.Rendering += OnRenderFrame;
-
-            // --- Load saved config (position, etc.) ---
             LoadConfig();
 
-            // If first launch (positions -1), center on primary monitor
             if (_config.XPos < 0 || _config.YPos < 0)
             {
-                var screen = System.Windows.SystemParameters.WorkArea;
-
+                var screen = SystemParameters.WorkArea;
                 _config.XPos = (screen.Width - _config.Width) / 2;
                 _config.YPos = (screen.Height - _config.Height) / 2;
-
-                SaveConfig(); // save initial position
+                SaveConfig();
             }
 
-            // Apply saved values
-            this.Width = _config.Width;
-            this.Height = _config.Height;
+            Width = _config.Width;
+            Height = _config.Height;
+            Left = _config.XPos;
+            Top = _config.YPos;
 
-            this.Left = _config.XPos;
-            this.Top = _config.YPos;
+            EnsureTopmost();
+            _topmostTimer.Start();
         }
 
-        /// <summary>
-        /// High-fidelity animation callback (fires once per rendered frame, synced to monitor refresh).
-        /// Computes deltaTime and updates the bar smoothly.
-        /// </summary>
-        private void OnRenderFrame(object sender, EventArgs e)
+        protected override void OnClosed(EventArgs e)
         {
-            if (e is RenderingEventArgs renderArgs)
-            {
-                TimeSpan now = renderArgs.RenderingTime;
-
-                // First frame — initialize and exit
-                if (_lastFrameTime == TimeSpan.Zero)
-                {
-                    _lastFrameTime = now;
-                    return;
-                }
-
-                // Compute deltaTime between frames
-                double deltaSeconds = (now - _lastFrameTime).TotalSeconds;
-                _lastFrameTime = now;
-
-                // Advance progress loop
-                _progress += deltaSeconds;
-
-                if (_progress >= DurationSeconds)
-                    _progress = 0;
-
-                double pct = _progress / DurationSeconds;
-
-                // Update bar width (safe even before layout finishes)
-                FillBar.Width = MainBorder.ActualWidth * pct;
-            }
+            _topmostTimer.Stop();
+            CompositionTarget.Rendering -= OnRenderFrame;
+            base.OnClosed(e);
         }
 
-        // -------------------------------------------------------------
-        //                       Window Dragging
-        // -------------------------------------------------------------
+        private void EnsureTopmost()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            NativeMethods.SetWindowPos(
+                hwnd,
+                NativeMethods.HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                NativeMethods.SWP_NOMOVE |
+                NativeMethods.SWP_NOSIZE |
+                NativeMethods.SWP_NOACTIVATE |
+                NativeMethods.SWP_NOOWNERZORDER);
+        }
+
+        private void OnRenderFrame(object? sender, EventArgs e)
+        {
+            if (e is not RenderingEventArgs renderArgs)
+            {
+                return;
+            }
+
+            TimeSpan now = renderArgs.RenderingTime;
+            if (_lastFrameTime == TimeSpan.Zero)
+            {
+                _lastFrameTime = now;
+                return;
+            }
+
+            _progress += (now - _lastFrameTime).TotalSeconds;
+            _lastFrameTime = now;
+
+            if (_progress >= DurationSeconds)
+            {
+                _progress %= DurationSeconds;
+                TriggerCompletionPulse();
+            }
+
+            FillBar.Width = MainBorder.ActualWidth * (_progress / DurationSeconds);
+        }
+
+        private void TriggerCompletionPulse()
+        {
+            static DoubleAnimationUsingKeyFrames PulseAnimation(double peakValue)
+            {
+                var animation = new DoubleAnimationUsingKeyFrames
+                {
+                    Duration = TimeSpan.FromMilliseconds(330),
+                    FillBehavior = FillBehavior.Stop
+                };
+
+                animation.KeyFrames.Add(new SplineDoubleKeyFrame(peakValue, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45))));
+                animation.KeyFrames.Add(new SplineDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(330))));
+                return animation;
+            }
+
+            CompletionPulseOverlay.BeginAnimation(OpacityProperty, PulseAnimation(1.0), HandoffBehavior.SnapshotAndReplace);
+            CompletionGlow.BeginAnimation(DropShadowEffect.OpacityProperty, PulseAnimation(1.0), HandoffBehavior.SnapshotAndReplace);
+            CompletionGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, PulseAnimation(18.0), HandoffBehavior.SnapshotAndReplace);
+        }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            // If locked, the window cannot be moved.
-            if (_isLocked) return;
+            if (_isLocked || e.ChangedButton != MouseButton.Left)
+            {
+                return;
+            }
 
-            if (e.ChangedButton == MouseButton.Left)
-                DragMove();
-
-            // Save new position AFTER the move finishes:
-            _config.XPos = this.Left;
-            _config.YPos = this.Top;
+            DragMove();
+            _config.XPos = Left;
+            _config.YPos = Top;
             SaveConfig();
         }
-
-        // -------------------------------------------------------------
-        //                       Lock Button
-        // -------------------------------------------------------------
 
         private void LockButton_Click(object sender, RoutedEventArgs e)
         {
@@ -147,54 +191,37 @@ namespace TristansTrackers
             LockIcon.Text = _isLocked ? "🔒" : "🔓";
         }
 
-        // -------------------------------------------------------------
-        //                  Hover Show/Hide Lock Button
-        // -------------------------------------------------------------
-
         private void RootGrid_MouseEnter(object sender, MouseEventArgs e)
         {
-            // Only show lock button when not locked
             LockButton.Visibility = Visibility.Visible;
         }
 
         private void RootGrid_MouseLeave(object sender, MouseEventArgs e)
         {
-            // Hide if locked; unlocked = stays visible
             if (_isLocked)
+            {
                 LockButton.Visibility = Visibility.Collapsed;
+            }
         }
-
-        // -------------------------------------------------------------
-        //                  Configuration Load/Save
-        // -------------------------------------------------------------
-
-        private readonly string _configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-    "TristansTrackers", "timebar_config.json");
-
-        private TimeBarConfig _config = new TimeBarConfig();
 
         private void LoadConfig()
         {
             try
             {
-                var dir = Path.GetDirectoryName(_configPath);
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
+                Directory.CreateDirectory(ConfigDirectory);
 
-                if (File.Exists(_configPath))
+                if (File.Exists(ConfigPath))
                 {
-                    string json = File.ReadAllText(_configPath);
-                    _config = JsonConvert.DeserializeObject<TimeBarConfig>(json)
-                              ?? new TimeBarConfig();
+                    string json = File.ReadAllText(ConfigPath);
+                    _config = JsonSerializer.Deserialize<TimeBarConfig>(json) ?? new TimeBarConfig();
                 }
                 else
                 {
-                    SaveConfig(); // generate fresh one
+                    SaveConfig();
                 }
             }
             catch
             {
-                // If anything explodes, use defaults
                 _config = new TimeBarConfig();
             }
         }
@@ -203,16 +230,13 @@ namespace TristansTrackers
         {
             try
             {
-                var dir = Path.GetDirectoryName(_configPath);
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-                string json = JsonConvert.SerializeObject(_config, Formatting.Indented);
-                File.WriteAllText(_configPath, json);
+                Directory.CreateDirectory(ConfigDirectory);
+                string json = JsonSerializer.Serialize(_config, JsonOptions);
+                File.WriteAllText(ConfigPath, json);
             }
             catch
             {
-                // ignore failures; app still works
+                // Configuration persistence should never prevent the timer from running.
             }
         }
     }
