@@ -45,8 +45,8 @@ During rendering, the app advances an in-memory progress value and updates the
 fill bar width against the current border width. The current fill cycle duration
 is one second, with a short visual pulse when each cycle completes.
 
-An alarm can be selected for 1 or 2 minutes, in 5-minute increments through 60
-minutes, or for 90 minutes or 2 hours. Starting an alarm adds a second bar that
+An alarm can be selected for 1, 2, 5, 10, 15, 20, 30, 45, 60, or 90 minutes,
+or for 2 hours. Starting an alarm adds a second bar that
 fills from left to right above the tracker without changing the tracker's saved
 position. The countdown uses an absolute UTC end time, so it remains accurate
 across system sleep while the app is running. Hovering shows whole minutes
@@ -120,7 +120,7 @@ package, includes the README and license, creates a ZIP and SHA-256 checksum,
 and publishes both assets with app description and usage notes:
 
 ```powershell
-.\scripts\Publish-GitHubRelease.ps1 -Version v0.2.0
+.\scripts\Publish-GitHubRelease.ps1 -Version v0.2.1
 ```
 
 The script requires an authenticated GitHub CLI session, committed tracked

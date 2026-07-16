@@ -133,7 +133,7 @@ TristansTrackers is a minimal, borderless, always-on-top Windows timer HUD. It p
 
 ## Alarm timers
 
-- Choose 1 or 2 minutes, 5-minute increments through 60 minutes, 90 minutes, or 2 hours.
+- Choose 1, 2, 5, 10, 15, 20, 30, 45, 60, or 90 minutes, or 2 hours.
 - The alarm bar fills from left to right and shows remaining whole minutes on hover.
 - Replace or cancel an active alarm from the alarm menu.
 - At expiry, Windows plays an alert and a large alarm-clock icon remains above the tracker until dismissed.

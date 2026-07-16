@@ -30,9 +30,8 @@ Releases page.
 
 - Drag the bar with the left mouse button to move it.
 - Use the lock button to toggle whether the bar can be moved.
-- Hover over the bar and select the alarm-clock button to start a 1- or
-  2-minute alarm, an alarm from 5 to 60 minutes in 5-minute increments, or a
-  90-minute or 2-hour alarm.
+- Hover over the bar and select the alarm-clock button to start a 1, 2, 5, 10,
+  15, 20, 30, 45, 60, or 90-minute alarm, or a 2-hour alarm.
 - While an alarm is active, its bar fills from left to right. Hover to see its
   remaining whole minutes, or open the alarm menu again to replace or cancel
   it.
