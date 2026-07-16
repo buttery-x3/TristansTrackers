@@ -14,10 +14,10 @@ The app starts from `App.xaml`, which opens `MainWindow.xaml`.
 
 ## Main Components
 
-- `MainWindow.xaml` defines the floating HUD window, the fill rectangle, and
-  the lock button.
+- `MainWindow.xaml` defines the floating HUD window, the tracker and alarm
+  bars, and their hover controls.
 - `MainWindow.xaml.cs` owns the window behavior: native window styles,
-  animation timing, dragging, lock state, and config load/save.
+  animation and alarm timing, dragging, lock state, and config load/save.
 - `TimerBarConfig.cs` defines the JSON-backed window configuration model.
 
 ## Runtime Flow
@@ -37,8 +37,17 @@ During rendering, the app advances an in-memory progress value and updates the
 fill bar width against the current border width. The current fill cycle duration
 is one second, with a short visual pulse when each cycle completes.
 
+An alarm can be selected in 5-minute increments through 60 minutes, followed
+by 90-minute and 2-hour options. Starting an alarm adds a second draining bar
+above the tracker without changing the tracker's saved position. The countdown
+uses an absolute UTC end time, so it remains accurate across system sleep while
+the app is running. Hovering shows whole minutes remaining, rounded up. At
+expiry the alarm plays the Windows system alert, pulses, and remains visible
+until dismissed. Alarm state is intentionally not persisted across app exits.
+
 When the user drags the unlocked window, the app saves the new `Left` and `Top`
-values after the drag finishes.
+values after the drag finishes. When the alarm row is present, the saved
+position still represents the lower tracker bar.
 
 ## Configuration
 
@@ -48,7 +57,7 @@ The config file is stored at:
 %APPDATA%\TristansTrackers\timebar_config.json
 ```
 
-It is backed by `TimeBarConfig` and serialized with Newtonsoft.Json.
+It is backed by `TimeBarConfig` and serialized with `System.Text.Json`.
 
 Current schema:
 
@@ -64,14 +73,25 @@ positions and cause the app to center the window before saving config.
 
 ## Build Baseline
 
-The current command-line build succeeds:
+Agents must always build the solution in the `Release` configuration after
+making code changes. This ensures the user has an up-to-date executable for
+manual testing:
 
 ```powershell
 dotnet restore
-dotnet build TristansTrackers.sln
+dotnet build TristansTrackers.sln --configuration Release
 ```
 
-The build should complete without warnings.
+If a running TristansTrackers instance locks the Release executable, close it
+and retry. Do not treat a build that could not update the executable as
+successful.
+
+The build should complete without warnings. Before handing work back, report
+the build result and the full path to the generated executable:
+
+```text
+bin\Release\net8.0-windows\TristansTrackers.exe
+```
 
 ## Future Development Notes
 

@@ -27,6 +27,11 @@ dotnet run --project TristansTrackers.csproj
 
 - Drag the bar with the left mouse button to move it.
 - Use the lock button to toggle whether the bar can be moved.
+- Hover over the bar and select the alarm-clock button to start an alarm from
+  5 to 60 minutes in 5-minute increments, or for 90 minutes or 2 hours.
+- While an alarm is active, hover to see its remaining whole minutes. Open the
+  alarm menu again to replace or cancel it.
+- When an alarm expires, click the alarm-clock button to dismiss it.
 - The window is always on top of normal windows.
 - The window is hidden from the taskbar and Alt+Tab list.
 
