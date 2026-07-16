@@ -18,6 +18,13 @@ The app starts from `App.xaml`, which opens `MainWindow.xaml`.
   bars, and their hover controls.
 - `MainWindow.xaml.cs` owns the window behavior: native window styles,
   animation and alarm timing, dragging, lock state, and config load/save.
+- `HudMenuWindow.xaml` and its code-behind implement the reusable square,
+  opaque command surface used by every application menu. Each menu is an
+  independent native tool window with the same topmost treatment as the
+  tracker.
+- `HudMenuManager.cs` owns menu creation, placement, lifecycle, and z-order.
+  Callers provide only `HudMenuItem` definitions and either an element or
+  cursor anchor.
 - `TimerBarConfig.cs` defines the JSON-backed window configuration model.
 
 ## Runtime Flow
@@ -31,23 +38,36 @@ On window load, the app:
 5. Centers the window on the primary monitor work area on first launch.
 6. Applies the configured width, height, and position.
 7. Starts a low-frequency z-order check so other topmost windows cannot leave
-   the tracker obscured.
+   the tracker obscured. When a HUD menu is open, the tracker is raised first
+   and the menu second so the menu always remains above the bars.
 
 During rendering, the app advances an in-memory progress value and updates the
 fill bar width against the current border width. The current fill cycle duration
 is one second, with a short visual pulse when each cycle completes.
 
-An alarm can be selected in 5-minute increments through 60 minutes, followed
-by 90-minute and 2-hour options. Starting an alarm adds a second draining bar
-above the tracker without changing the tracker's saved position. The countdown
-uses an absolute UTC end time, so it remains accurate across system sleep while
-the app is running. Hovering shows whole minutes remaining, rounded up. At
-expiry the alarm plays the Windows system alert, pulses, and remains visible
-until dismissed. Alarm state is intentionally not persisted across app exits.
+An alarm can be selected for 1 or 2 minutes, in 5-minute increments through 60
+minutes, or for 90 minutes or 2 hours. Starting an alarm adds a second bar that
+fills from left to right above the tracker without changing the tracker's saved
+position. The countdown uses an absolute UTC end time, so it remains accurate
+across system sleep while the app is running. Hovering shows whole minutes
+remaining, rounded up. At expiry the alarm bar is replaced by an alarm-clock
+icon sized to the timer bar's width, the Windows system alert plays, and the
+icon pulses and remains visible until dismissed.
+Alarm state is intentionally not persisted across app exits.
 
 When the user drags the unlocked window, the app saves the new `Left` and `Top`
 values after the drag finishes. When the alarm row is present, the saved
 position still represents the lower tracker bar.
+
+## Menu Convention
+
+All current and future menus must use `HudMenuManager`, `HudMenuWindow`, and
+`HudMenuItem`. Do not introduce WPF `ContextMenu`, `Popup`, or feature-specific
+menu windows. A feature creates a list of item definitions and supplies either
+`HudMenuAnchor.ForElement(...)` for a control-anchored menu or
+`HudMenuAnchor.AtCursor(...)` for a pointer-anchored menu. This keeps styling,
+keyboard behavior, screen-edge placement, cleanup, and coordinated topmost
+ordering consistent across the app.
 
 ## Configuration
 
@@ -92,6 +112,20 @@ the build result and the full path to the generated executable:
 ```text
 bin\Release\net8.0-windows\TristansTrackers.exe
 ```
+
+## Publishing a GitHub Release
+
+The reusable release script builds a self-contained, single-file Windows x64
+package, includes the README and license, creates a ZIP and SHA-256 checksum,
+and publishes both assets with app description and usage notes:
+
+```powershell
+.\scripts\Publish-GitHubRelease.ps1 -Version v0.2.0
+```
+
+The script requires an authenticated GitHub CLI session, committed tracked
+files, and local `main` aligned exactly with `origin/main`. Generated packages
+and release notes are written under the ignored `artifacts` directory.
 
 ## Future Development Notes
 

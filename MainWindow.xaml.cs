@@ -3,8 +3,6 @@ using System.Media;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -51,7 +49,7 @@ namespace TristansTrackers
         private const double DurationSeconds = 1.0;
         private static readonly int[] AlarmDurationMinutes =
         [
-            5, 10, 15, 20, 25, 30, 35,
+            1, 2, 5, 10, 15, 20, 25, 30, 35,
             40, 45, 50, 55, 60, 90, 120
         ];
         private static readonly string ConfigDirectory = Path.Combine(
@@ -61,42 +59,29 @@ namespace TristansTrackers
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
         private readonly DispatcherTimer _topmostTimer;
-        private readonly ContextMenu _alarmMenu;
-        private readonly MenuItem _cancelAlarmMenuItem;
+        private readonly HudMenuManager _menuManager;
         private TimeBarConfig _config = new();
         private TimeSpan _lastFrameTime = TimeSpan.Zero;
         private TimeSpan _alarmDuration = TimeSpan.Zero;
         private DateTimeOffset? _alarmEndsAtUtc;
         private double _progress;
+        private double _upperContentHeight;
         private bool _isLocked;
-        private bool _isAlarmVisible;
-        private bool _isAlarmExpired;
         private bool _isPointerOver;
+        private AlarmState _alarmState;
+
+        private enum AlarmState
+        {
+            None,
+            Running,
+            Completed
+        }
 
         public MainWindow()
         {
             InitializeComponent();
 
-            _alarmMenu = new ContextMenu();
-            foreach (int minutes in AlarmDurationMinutes)
-            {
-                var durationItem = new MenuItem
-                {
-                    Header = minutes == 120 ? "2 hours" : $"{minutes} minutes",
-                    Tag = minutes
-                };
-                durationItem.Click += AlarmDurationMenuItem_Click;
-                _alarmMenu.Items.Add(durationItem);
-            }
-
-            _alarmMenu.Items.Add(new Separator());
-            _cancelAlarmMenuItem = new MenuItem
-            {
-                Header = "Cancel alarm",
-                Visibility = Visibility.Collapsed
-            };
-            _cancelAlarmMenuItem.Click += CancelAlarmMenuItem_Click;
-            _alarmMenu.Items.Add(_cancelAlarmMenuItem);
+            _menuManager = new HudMenuManager();
 
             _topmostTimer = new DispatcherTimer
             {
@@ -136,6 +121,7 @@ namespace TristansTrackers
 
         protected override void OnClosed(EventArgs e)
         {
+            _menuManager.Close();
             _topmostTimer.Stop();
             CompositionTarget.Rendering -= OnRenderFrame;
             base.OnClosed(e);
@@ -160,6 +146,10 @@ namespace TristansTrackers
                 NativeMethods.SWP_NOSIZE |
                 NativeMethods.SWP_NOACTIVATE |
                 NativeMethods.SWP_NOOWNERZORDER);
+
+            // Always raise the independent menu after the tracker so it stays
+            // above the bars within the topmost z-order band.
+            _menuManager.EnsureTopmost();
         }
 
         private void OnRenderFrame(object? sender, EventArgs e)
@@ -217,39 +207,46 @@ namespace TristansTrackers
                 return;
             }
 
+            _menuManager.Close();
             DragMove();
             _config.XPos = Left;
-            _config.YPos = _isAlarmVisible ? Top + _config.Height : Top;
+            _config.YPos = _alarmState == AlarmState.None ? Top : Top + _upperContentHeight;
             SaveConfig();
         }
 
         private void AlarmButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_isAlarmExpired)
+            if (_alarmState == AlarmState.Completed)
             {
                 CancelAlarm();
                 return;
             }
 
-            _cancelAlarmMenuItem.Visibility = _isAlarmVisible
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-            _alarmMenu.PlacementTarget = AlarmButton;
-            _alarmMenu.Placement = PlacementMode.Bottom;
-            _alarmMenu.IsOpen = true;
-        }
-
-        private void AlarmDurationMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is MenuItem { Tag: int minutes })
+            var items = new List<HudMenuItem>();
+            foreach (int minutes in AlarmDurationMinutes)
             {
-                StartAlarm(minutes);
+                int selectedMinutes = minutes;
+                items.Add(new HudMenuItem(
+                    FormatDurationMenuLabel(selectedMinutes),
+                    () => StartAlarm(selectedMinutes)));
             }
+
+            if (_alarmState == AlarmState.Running)
+            {
+                items.Add(new HudMenuItem("Cancel alarm", CancelAlarm, SeparatorBefore: true));
+            }
+
+            _menuManager.Show(items, HudMenuAnchor.ForElement(GetElementScreenBounds(AlarmButton)));
+            EnsureTopmost();
         }
 
-        private void CancelAlarmMenuItem_Click(object sender, RoutedEventArgs e)
+        private void Window_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
         {
-            CancelAlarm();
+            e.Handled = true;
+            _menuManager.Show(
+                [new HudMenuItem("Exit", () => Application.Current.Shutdown(), IsDestructive: true)],
+                HudMenuAnchor.AtCursor(ToScreenDips(e.GetPosition(this))));
+            EnsureTopmost();
         }
 
         private void StartAlarm(int minutes)
@@ -257,14 +254,14 @@ namespace TristansTrackers
             DateTimeOffset now = DateTimeOffset.UtcNow;
             _alarmDuration = TimeSpan.FromMinutes(minutes);
             _alarmEndsAtUtc = now + _alarmDuration;
-            _isAlarmExpired = false;
+            _alarmState = AlarmState.Running;
 
-            AlarmPulseOverlay.BeginAnimation(OpacityProperty, null);
-            AlarmGlow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
-            AlarmGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
+            CompletedAlarmPulseOverlay.BeginAnimation(OpacityProperty, null);
+            CompletedAlarmGlow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
+            CompletedAlarmGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
             AlarmButton.ToolTip = "Alarm options";
 
-            SetAlarmVisible(true);
+            ApplyAlarmStateLayout();
             UpdateAlarm(now);
         }
 
@@ -286,7 +283,8 @@ namespace TristansTrackers
                 remaining.TotalSeconds / _alarmDuration.TotalSeconds,
                 0,
                 1);
-            AlarmFillBar.Width = AlarmGrid.ActualWidth * remainingRatio;
+            double elapsedRatio = 1 - remainingRatio;
+            AlarmFillBar.Width = AlarmGrid.ActualWidth * elapsedRatio;
 
             if (_isPointerOver)
             {
@@ -298,15 +296,15 @@ namespace TristansTrackers
         private void CompleteAlarm()
         {
             _alarmEndsAtUtc = null;
-            _isAlarmExpired = true;
+            _alarmState = AlarmState.Completed;
             AlarmFillBar.Width = 0;
-            AlarmRemainingText.Text = "ALARM";
-            AlarmRemainingText.Visibility = Visibility.Visible;
+            AlarmRemainingText.Visibility = Visibility.Collapsed;
             AlarmButton.ToolTip = "Dismiss alarm";
+            ApplyAlarmStateLayout();
 
-            AlarmPulseOverlay.BeginAnimation(OpacityProperty, PulseAnimation(1.0), HandoffBehavior.SnapshotAndReplace);
-            AlarmGlow.BeginAnimation(DropShadowEffect.OpacityProperty, PulseAnimation(1.0), HandoffBehavior.SnapshotAndReplace);
-            AlarmGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, PulseAnimation(18.0), HandoffBehavior.SnapshotAndReplace);
+            CompletedAlarmPulseOverlay.BeginAnimation(OpacityProperty, PulseAnimation(1.0), HandoffBehavior.SnapshotAndReplace);
+            CompletedAlarmGlow.BeginAnimation(DropShadowEffect.OpacityProperty, PulseAnimation(1.0), HandoffBehavior.SnapshotAndReplace);
+            CompletedAlarmGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, PulseAnimation(18.0), HandoffBehavior.SnapshotAndReplace);
             SystemSounds.Exclamation.Play();
         }
 
@@ -314,37 +312,53 @@ namespace TristansTrackers
         {
             _alarmEndsAtUtc = null;
             _alarmDuration = TimeSpan.Zero;
-            _isAlarmExpired = false;
+            _alarmState = AlarmState.None;
             AlarmButton.ToolTip = "Set alarm";
-            SetAlarmVisible(false);
+            ApplyAlarmStateLayout();
         }
 
-        private void SetAlarmVisible(bool isVisible)
+        private void ApplyAlarmStateLayout()
         {
-            if (_isAlarmVisible == isVisible)
+            _menuManager.Close();
+
+            switch (_alarmState)
             {
-                return;
+                case AlarmState.Running:
+                    _upperContentHeight = _config.Height;
+                    AlarmBorder.Visibility = Visibility.Visible;
+                    CompletedAlarmPanel.Visibility = Visibility.Collapsed;
+                    break;
+
+                case AlarmState.Completed:
+                    double completedAlarmSize = Math.Max(1, _config.Width);
+                    double completedIconSize = Math.Max(1, completedAlarmSize - 12);
+                    _upperContentHeight = completedAlarmSize;
+                    CompletedAlarmPanel.Width = completedAlarmSize;
+                    CompletedAlarmPanel.Height = completedAlarmSize;
+                    CompletedAlarmButton.Width = completedAlarmSize;
+                    CompletedAlarmButton.Height = completedAlarmSize;
+                    CompletedAlarmIconViewbox.Width = completedIconSize;
+                    CompletedAlarmIconViewbox.Height = completedIconSize;
+                    CompletedAlarmPulseOverlay.Width = completedAlarmSize;
+                    CompletedAlarmPulseOverlay.Height = completedAlarmSize;
+                    AlarmBorder.Visibility = Visibility.Collapsed;
+                    CompletedAlarmPanel.Visibility = Visibility.Visible;
+                    break;
+
+                default:
+                    _upperContentHeight = 0;
+                    AlarmRemainingText.Visibility = Visibility.Collapsed;
+                    AlarmFillBar.Width = 0;
+                    AlarmBorder.Visibility = Visibility.Collapsed;
+                    CompletedAlarmPanel.Visibility = Visibility.Collapsed;
+                    break;
             }
 
-            _isAlarmVisible = isVisible;
-            if (isVisible)
-            {
-                AlarmBorder.Visibility = Visibility.Visible;
-                AlarmRow.Height = new GridLength(_config.Height);
-                Height = _config.Height * 2;
-
-                double requestedTop = _config.YPos - _config.Height;
-                Top = Math.Max(SystemParameters.WorkArea.Top, requestedTop);
-            }
-            else
-            {
-                AlarmRemainingText.Visibility = Visibility.Collapsed;
-                AlarmFillBar.Width = 0;
-                AlarmBorder.Visibility = Visibility.Collapsed;
-                AlarmRow.Height = new GridLength(0);
-                Height = _config.Height;
-                Top = _config.YPos;
-            }
+            AlarmRow.Height = new GridLength(_upperContentHeight);
+            Height = _config.Height + _upperContentHeight;
+            Top = _upperContentHeight == 0
+                ? _config.YPos
+                : Math.Max(SystemParameters.WorkArea.Top, _config.YPos - _upperContentHeight);
 
             EnsureTopmost();
         }
@@ -355,15 +369,42 @@ namespace TristansTrackers
             return $"{minutes} min";
         }
 
+        private static string FormatDurationMenuLabel(int minutes)
+        {
+            return minutes switch
+            {
+                1 => "1 minute",
+                120 => "2 hours",
+                _ => $"{minutes} minutes"
+            };
+        }
+
+        private void CompletedAlarmButton_Click(object sender, RoutedEventArgs e)
+        {
+            CancelAlarm();
+        }
+
         private void LockButton_Click(object sender, RoutedEventArgs e)
         {
             _isLocked = !_isLocked;
             LockIcon.Text = _isLocked ? "🔒" : "🔓";
         }
 
-        private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
+        private Point ToScreenDips(Point pointInWindow)
         {
-            Application.Current.Shutdown();
+            Point screenPixels = PointToScreen(pointInWindow);
+            PresentationSource? source = PresentationSource.FromVisual(this);
+            return source?.CompositionTarget?.TransformFromDevice.Transform(screenPixels)
+                ?? screenPixels;
+        }
+
+        private Rect GetElementScreenBounds(FrameworkElement element)
+        {
+            Point topLeft = element.TranslatePoint(new Point(0, 0), this);
+            Point bottomRight = element.TranslatePoint(
+                new Point(element.ActualWidth, element.ActualHeight),
+                this);
+            return new Rect(ToScreenDips(topLeft), ToScreenDips(bottomRight));
         }
 
         private void RootGrid_MouseEnter(object sender, MouseEventArgs e)
@@ -372,13 +413,9 @@ namespace TristansTrackers
             AlarmButton.Visibility = Visibility.Visible;
             LockButton.Visibility = Visibility.Visible;
 
-            if (_isAlarmVisible)
+            if (_alarmState == AlarmState.Running)
             {
-                if (_isAlarmExpired)
-                {
-                    AlarmRemainingText.Text = "ALARM";
-                }
-                else if (_alarmEndsAtUtc is DateTimeOffset alarmEndsAtUtc)
+                if (_alarmEndsAtUtc is DateTimeOffset alarmEndsAtUtc)
                 {
                     AlarmRemainingText.Text = FormatRemainingMinutes(alarmEndsAtUtc - DateTimeOffset.UtcNow);
                 }
@@ -392,10 +429,7 @@ namespace TristansTrackers
             _isPointerOver = false;
             AlarmButton.Visibility = Visibility.Collapsed;
 
-            if (!_isAlarmExpired)
-            {
-                AlarmRemainingText.Visibility = Visibility.Collapsed;
-            }
+            AlarmRemainingText.Visibility = Visibility.Collapsed;
 
             if (_isLocked)
             {

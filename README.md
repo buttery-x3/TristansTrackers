@@ -23,15 +23,24 @@ dotnet build TristansTrackers.sln
 dotnet run --project TristansTrackers.csproj
 ```
 
+Packaged, self-contained Windows builds are also available from the GitHub
+Releases page.
+
 ## Usage
 
 - Drag the bar with the left mouse button to move it.
 - Use the lock button to toggle whether the bar can be moved.
-- Hover over the bar and select the alarm-clock button to start an alarm from
-  5 to 60 minutes in 5-minute increments, or for 90 minutes or 2 hours.
-- While an alarm is active, hover to see its remaining whole minutes. Open the
-  alarm menu again to replace or cancel it.
-- When an alarm expires, click the alarm-clock button to dismiss it.
+- Hover over the bar and select the alarm-clock button to start a 1- or
+  2-minute alarm, an alarm from 5 to 60 minutes in 5-minute increments, or a
+  90-minute or 2-hour alarm.
+- While an alarm is active, its bar fills from left to right. Hover to see its
+  remaining whole minutes, or open the alarm menu again to replace or cancel
+  it.
+- When an alarm expires, its bar is replaced by a large alarm-clock icon above
+  the tracker spanning the timer bar's width. Click either alarm-clock icon to
+  dismiss it.
+- Right-click the tracker to open its square dark HUD command menu. The alarm
+  picker uses the same menu system and stays above the tracker bars.
 - The window is always on top of normal windows.
 - The window is hidden from the taskbar and Alt+Tab list.
 
