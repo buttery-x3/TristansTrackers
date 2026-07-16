@@ -73,8 +73,17 @@ try {
         throw "Tag $Version already exists on origin."
     }
 
-    & gh release view $Version --repo $Repository *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        & gh release view $Version --repo $Repository 2>$null | Out-Null
+        $releaseExists = $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($releaseExists) {
         throw "GitHub release $Version already exists."
     }
 
