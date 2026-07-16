@@ -44,7 +44,7 @@ try {
         throw 'GitHub CLI (gh) is required. Install it and run gh auth login.'
     }
 
-    Invoke-Checked gh auth status
+    Invoke-Checked -Command gh -Arguments @('auth', 'status')
 
     $branch = (git branch --show-current).Trim()
     if ($branch -ne 'main') {
@@ -61,7 +61,7 @@ try {
         throw 'Staged changes must be committed before publishing a release.'
     }
 
-    Invoke-Checked git fetch origin main
+    Invoke-Checked -Command git -Arguments @('fetch', 'origin', 'main')
     $localSha = (git rev-parse HEAD).Trim()
     $originSha = (git rev-parse origin/main).Trim()
     if ($localSha -ne $originSha) {
@@ -105,16 +105,19 @@ try {
         }
     }
 
-    Invoke-Checked dotnet publish TristansTrackers.csproj `
-        --configuration Release `
-        --runtime $Runtime `
-        --self-contained true `
-        --output $publishDirectory `
-        -p:PublishSingleFile=true `
-        -p:IncludeNativeLibrariesForSelfExtract=true `
-        -p:EnableCompressionInSingleFile=true `
-        -p:DebugType=None `
-        -p:DebugSymbols=false
+    $publishArguments = @(
+        'publish', 'TristansTrackers.csproj',
+        '--configuration', 'Release',
+        '--runtime', $Runtime,
+        '--self-contained', 'true',
+        '--output', $publishDirectory,
+        '-p:PublishSingleFile=true',
+        '-p:IncludeNativeLibrariesForSelfExtract=true',
+        '-p:EnableCompressionInSingleFile=true',
+        '-p:DebugType=None',
+        '-p:DebugSymbols=false'
+    )
+    Invoke-Checked -Command dotnet -Arguments $publishArguments
 
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'README.md') -Destination $publishDirectory
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE.txt') -Destination $publishDirectory
@@ -165,8 +168,12 @@ This **$Runtime** package is self-contained and does not require a separate .NET
         $releaseArguments += '--prerelease'
     }
 
-    Invoke-Checked gh @releaseArguments
-    Invoke-Checked gh release view $Version --repo $Repository --json url,tagName,name,isDraft,isPrerelease
+    Invoke-Checked -Command gh -Arguments $releaseArguments
+    Invoke-Checked -Command gh -Arguments @(
+        'release', 'view', $Version,
+        '--repo', $Repository,
+        '--json', 'url,tagName,name,isDraft,isPrerelease'
+    )
 }
 finally {
     Pop-Location
