@@ -1,17 +1,30 @@
 # TristansTrackers
 
-TristansTrackers is a minimal Windows WPF timer/progress HUD. It runs as a
-small, borderless, always-on-top bar that can be dragged around the desktop and
-locked in place.
+TristansTrackers is a minimal, always-on-top Windows timer HUD. Its compact
+one-second progress bar provides a persistent visual rhythm, while optional
+alarm timers add longer countdowns without getting in the way of your work.
 
-The app is intentionally lightweight: it stays out of the taskbar and Alt+Tab
-list, animates a simple fill bar with a completion pulse, and saves its last
-position between launches.
+![TristansTrackers timer and alarm HUD](timers.gif)
+
+## Features
+
+- A continuously filling one-second tracker with a pulse at completion.
+- One alarm at a time, with presets from 1 minute to 2 hours.
+- An alarm bar that fills from left to right and shows the remaining whole
+  minutes on hover.
+- Sleep-aware countdown timing while the app remains open.
+- A Windows alert and large pulsing alarm icon at expiry, shown until dismissed.
+- Square, opaque custom HUD menus for alarm selection and exiting the app that
+  remain above the timer bars.
+- Drag-to-position and lock controls, with the position saved between launches.
+- A borderless, always-on-top window hidden from the taskbar and Alt+Tab list.
 
 ## Requirements
 
-- Windows
-- .NET 8 SDK, or Visual Studio 2022 with the WPF workload installed
+- Windows 10 or later.
+- The packaged release is self-contained and requires no separate .NET install.
+- Building from source requires the .NET 8 SDK or Visual Studio 2022 with the
+  WPF workload installed.
 
 ## Quick Start
 
@@ -23,8 +36,8 @@ dotnet build TristansTrackers.sln
 dotnet run --project TristansTrackers.csproj
 ```
 
-Packaged, self-contained Windows builds are also available from the GitHub
-Releases page.
+Packaged, self-contained Windows builds are also available from the
+[GitHub Releases](https://github.com/buttery-x3/TristansTrackers/releases) page.
 
 ## Usage
 
@@ -38,6 +51,7 @@ Releases page.
 - When an alarm expires, its bar is replaced by a large alarm-clock icon above
   the tracker spanning the timer bar's width. Click either alarm-clock icon to
   dismiss it.
+- Active alarms are not restored after the app exits.
 - Right-click the tracker to open its square dark HUD command menu. The alarm
   picker uses the same menu system and stays above the tracker bars.
 - The window is always on top of normal windows.
